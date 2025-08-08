@@ -7,7 +7,7 @@ all: $(DYLIB)
 
 # Build Swift dynamic library
 $(DYLIB): $(SWIFT_SRC)
-	swiftc -emit-library -o $(DYLIB) $(SWIFT_SRC) -framework Cocoa -emit-objc-header-path $(HEADER)
+    swiftc -emit-library -o $(DYLIB) -import-objc-header $(HEADER) $(SWIFT_SRC) -framework Cocoa -framework Foundation
 
 # Run the Go application
 run: $(DYLIB)
@@ -19,7 +19,7 @@ clean:
 
 
 build: $(DYLIB)
-	# swiftc -emit-library -o libairdrop.dylib -import-objc-header airdrop.h AirDropBridge.swift -framework Cocoa -framework Foundation
+	# swiftc -emit-library -o $(DYLIB) -import-objc-header $(HEADER) $(SWIFT_SRC) -framework Cocoa -framework Foundation
 	go build -o airdrop main.go
 
 .PHONY: all run clean
