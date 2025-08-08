@@ -25,45 +25,31 @@ var (
 	verbose bool
 )
 
-// tempFiles keeps track of temp files we must remove on exit
+// tempFiles stores temporary files created during runtime that must be removed on exit
 var tempFiles []string
 
+func colorize(text, colorCode string) string {
+	reset := "\033[0m"
+	return colorCode + text + reset
+}
+
+// logf prints messages only if verbose mode is enabled
 func logf(format string, a ...interface{}) {
 	if verbose {
 		fmt.Fprintf(os.Stderr, format+"\n", a...)
 	}
 }
 
+// cleanup removes all temporary files created by the program
 func cleanup() {
 	for _, f := range tempFiles {
-		// best-effort remove
-		_ = os.Remove(f)
+		_ = os.Remove(f) // best effort cleanup
 	}
 }
 
-func mkTempFromStdin(suggestExt string) (string, error) {
-	tmp, err := os.CreateTemp("", "airdrop_stdin_*"+suggestExt)
-	if err != nil {
-		return "", err
-	}
-	name := tmp.Name()
-	tempFiles = append(tempFiles, name)
-
-	// copy stdin to file
-	_, err = io.Copy(tmp, os.Stdin)
-	if cerr := tmp.Close(); cerr != nil && err == nil {
-		err = cerr
-	}
-	if err != nil {
-		return "", err
-	}
-	return name, nil
-}
-
+// detectExtFromBytes tries to guess a file extension based on its first bytes
 func detectExtFromBytes(sample []byte) string {
-	// DetectContentType needs at least the initial bytes.
 	ct := http.DetectContentType(sample)
-	// map some common content-types to ext
 	switch {
 	case strings.HasPrefix(ct, "image/png"):
 		return ".png"
@@ -75,38 +61,66 @@ func detectExtFromBytes(sample []byte) string {
 		return ".pdf"
 	case strings.HasPrefix(ct, "text/"):
 		return ".txt"
-	// add more as needed
 	default:
 		return ""
 	}
 }
 
 func main() {
-	runtime.LockOSThread() // Закрепляем main за текущим ОС-потоком
+	// Ensure Go main goroutine stays bound to the current OS thread
+	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
+	// CLI flags
 	flag.BoolVar(&verbose, "v", false, "verbose logging")
+
+	flag.Usage = func() {
+		// ANSI escape codes для цветов
+		cyan := "\033[36m"
+		yellow := "\033[33m"
+		bold := "\033[1m"
+
+		fmt.Fprintf(os.Stderr, "%s\n\n", colorize("Copyright © 2025, Vitalii Tereshchuk | DOTOCA.NET All rights reserved | https://dotoca.net/airdrop", cyan))
+		fmt.Fprintf(os.Stderr, "%s%s%s\n\n", bold, colorize("airdrop — version 0.1.2", yellow), "\033[0m")
+		fmt.Fprintf(os.Stderr, "%s\n", colorize("Usage:", bold))
+		fmt.Fprintf(os.Stderr, "  %s [options] file1 file2 ...\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  cat file.pdf | %s [options]\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "%s\n", colorize("Options:", bold))
+		flag.PrintDefaults()
+	}
+
 	flag.Parse()
 
-	// ensure cleanup on exit and on signals
+	// Check if no arguments and no stdin → show usage and exit
+	info, _ := os.Stdin.Stat()
+	noArgs := flag.NArg() == 0
+	stdinIsPipe := (info.Mode() & os.ModeCharDevice) == 0
+
+	if noArgs && !stdinIsPipe {
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	// Ensure cleanup is called at exit
 	defer cleanup()
+
+	// Catch SIGINT/SIGTERM to cleanup temp files
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		s := <-c
 		logf("caught signal %v — cleaning up", s)
 		cleanup()
-		os.Exit(130) // 128 + SIGINT
+		os.Exit(130) // exit code 128 + signal number
 	}()
 
 	var files []string
 
 	if flag.NArg() > 0 {
-		// Accept all provided args as files
+		// Files provided as command-line arguments
 		files = append(files, flag.Args()...)
 	} else {
-		// No args — read stdin into temp file.
-		// Read a small sample to detect MIME / extension
+		// Read from stdin into a temporary file
 		const sniffLen = 512
 		buf := make([]byte, sniffLen)
 		n, err := io.ReadAtLeast(os.Stdin, buf, 1)
@@ -117,7 +131,6 @@ func main() {
 		sample := buf[:n]
 
 		ext := detectExtFromBytes(sample)
-		// create temp file with extension (we'll append remaining stdin)
 		tmp, err := os.CreateTemp("", "airdrop_stdin_*"+ext)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "failed to create temp file:", err)
@@ -126,15 +139,12 @@ func main() {
 		tmpName := tmp.Name()
 		tempFiles = append(tempFiles, tmpName)
 
-		// write the sample and then the rest
-		_, err = tmp.Write(sample)
-		if err != nil {
+		if _, err = tmp.Write(sample); err != nil {
 			_ = tmp.Close()
 			fmt.Fprintln(os.Stderr, "failed to write to temp file:", err)
 			os.Exit(4)
 		}
-		_, err = io.Copy(tmp, os.Stdin)
-		if err != nil {
+		if _, err = io.Copy(tmp, os.Stdin); err != nil {
 			_ = tmp.Close()
 			fmt.Fprintln(os.Stderr, "failed to write rest of stdin:", err)
 			os.Exit(5)
@@ -147,7 +157,7 @@ func main() {
 		logf("stdin saved to %s (detected ext %s)", tmpName, ext)
 	}
 
-	// Validate files exist and are readable
+	// Check all files exist and are readable
 	for _, f := range files {
 		if _, err := os.Stat(f); err != nil {
 			fmt.Fprintln(os.Stderr, "file not accessible:", f, ":", err)
@@ -155,30 +165,26 @@ func main() {
 		}
 	}
 
-	// Build C array
+	// Convert file paths to C strings
 	cFiles := make([]*C.char, len(files))
-	// Keep track to free
 	for i, f := range files {
 		abs := f
-		// convert to absolute path — safer for C code
 		if !filepath.IsAbs(f) {
 			if a, err := filepath.Abs(f); err == nil {
 				abs = a
 			}
 		}
 		cFiles[i] = C.CString(abs)
-		// defer frees only after we call C function - OK here.
 		defer C.free(unsafe.Pointer(cFiles[i]))
 		logf("prepared file %d -> %s", i, abs)
 	}
 
-	// Call into C
 	if len(cFiles) == 0 {
 		fmt.Fprintln(os.Stderr, "no files to share")
 		os.Exit(11)
 	}
 
-	// Pointer to first element
+	// Call AirDrop function from C
 	ptr := (**C.char)(unsafe.Pointer(&cFiles[0]))
 	res := C.ShareViaAirDrop(ptr, C.int(len(cFiles)))
 	if res != 0 {

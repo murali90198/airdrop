@@ -1,8 +1,14 @@
 #ifndef AIRDROP_H
 #define AIRDROP_H
 
-#include <stdint.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-int32_t ShareViaAirDrop(const char **paths, int32_t count);
+int ShareViaAirDrop(const char **files, int count);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

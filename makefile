@@ -22,4 +22,8 @@ build: $(DYLIB)
 	# swiftc -emit-library -o $(DYLIB) -import-objc-header $(HEADER) $(SWIFT_SRC) -framework Cocoa -framework Foundation
 	go build -o airdrop main.go
 
+sign:
+	codesign --force --sign - libairdrop.dylib
+	codesign --force --sign - airdrop
+
 .PHONY: all run clean
