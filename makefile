@@ -17,9 +17,10 @@ $(STATIC_LIB): $(OBJ)
 	# Create static library from the object file
 
 $(BIN): main.go $(STATIC_LIB)
-	go build -o $(BIN) main.go
+	CGO_ENABLED=1 go build -o $(BIN) main.go
 	rm -f $(OBJ) $(STATIC_LIB)
 	# Build Go binary linking with static Swift library and clean intermediate files
+
 
 clean:
 	rm -f $(OBJ) $(STATIC_LIB) $(BIN)
