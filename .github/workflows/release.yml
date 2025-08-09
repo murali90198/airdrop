@@ -9,7 +9,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v1.0.0"
+        default: "v0.2.4"
 
 jobs:
   build-arm64:
@@ -35,7 +35,7 @@ jobs:
         id: build
 
       - name: Upload arm64 binary as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: airdrop-arm64
           path: airdrop
@@ -64,7 +64,7 @@ jobs:
         id: build
 
       - name: Upload x86_64 binary as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: airdrop-x86_64
           path: airdrop
