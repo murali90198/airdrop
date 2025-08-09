@@ -10,24 +10,26 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
 
-      - name: Build macOS binary
-        run: |
-          go build -v -o airdrop main.go
+      - name: Set up Swift (macOS уже имеет swift)
 
-      - name: List directory contents
+      - name: Build with Makefile
+        run: make all
+
+      - name: List files
         run: ls -l
 
-      - name: Upload binary to release
+      - name: Upload binary and dylib to release
         uses: softprops/action-gh-release@v1
         with:
-          files: airdrop
+          files: |
+            airdrop
+            libairdrop.dylib
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
