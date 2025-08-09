@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*' # Запускать при пуше тега вида v1.0.0
+      - "v*" # запускать при пуше тегов вида v1.0.0
 
 jobs:
   build:
@@ -16,11 +16,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: "1.22"
 
       - name: Build macOS binary
         run: |
-          go build -o airdrop main.go
+          go build -v -o airdrop main.go
+
+      - name: List directory contents
+        run: ls -l
 
       - name: Upload binary to release
         uses: softprops/action-gh-release@v1
