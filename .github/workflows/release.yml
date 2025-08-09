@@ -18,7 +18,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4 # Checkout the repository code
-
+        with:
+          # Checkout the tag provided via input, fallback to default branch if not specified
+          ref: ${{ github.event.inputs.tag || 'main' }}
       - name: Set up Go
         uses: actions/setup-go@v5 # Set up Go environment
         with:
@@ -28,8 +30,9 @@ jobs:
         run: make all # Run make all to build your binary
 
       - name: Upload binary to release
-        uses: softprops/action-gh-release@v1 # Upload artifacts to GitHub Release
+        uses: softprops/action-gh-release@v1
         with:
           files: airdrop
+          tag_name: ${{ github.event.inputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
