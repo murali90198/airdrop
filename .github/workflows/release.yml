@@ -9,11 +9,15 @@ on:
       tag:
         description: "Hand Action Release"
         required: true
-        default: "v777"
+        default: "v0.2.4"
 
 jobs:
   build:
-    runs-on: macos-14 # Use specific macOS version instead of macos-latest for stability
+    runs-on: macos-latest # Use specific macOS version instead of macos-latest for stability
+
+    strategy:
+      matrix:
+        arch: [arm64, x86_64] # Build for both Apple Silicon and Intel
 
     steps:
       - name: Checkout code
@@ -21,18 +25,30 @@ jobs:
         with:
           # Checkout the tag provided via input, fallback to default branch if not specified
           ref: ${{ github.event.inputs.tag || 'main' }}
+
       - name: Set up Go
         uses: actions/setup-go@v5 # Set up Go environment
         with:
           go-version: "1.22"
 
-      - name: Build binary
-        run: make all # Run make all to build your binary
+      - name: Build binary for ${{ matrix.arch }}
+        env:
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: 1
+        run: |
+          # Clean previous builds
+          rm -f airdrop-${{ matrix.arch }}
+          # Build binary for specific architecture
+          GOOS=darwin GOARCH=${{ matrix.arch }} make all
+          # Rename the binary to include architecture suffix
+          mv airdrop airdrop-${{ matrix.arch }}
 
-      - name: Upload binary to release
+      - name: Upload binaries to release
         uses: softprops/action-gh-release@v1
         with:
-          files: airdrop
+          files: |
+            airdrop-arm64
+            airdrop-x86_64
           tag_name: ${{ github.event.inputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
