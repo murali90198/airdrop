@@ -3,29 +3,25 @@ name: Build and Release
 on:
   push:
     tags:
-      - "v*" # tags like v1.0.0
+      - "v*"
 
 jobs:
   build:
     runs-on: macos-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
 
-      - name: Set up Swift
-
-      - name: Build with Makefile
+      - name: Build all with Makefile
         run: make all
 
-      - name: List files
-        run: ls -l
-
-      - name: Upload binary and dylib to release
+      - name: Upload binaries to release
         uses: softprops/action-gh-release@v1
         with:
           files: |
