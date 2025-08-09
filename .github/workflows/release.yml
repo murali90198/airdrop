@@ -13,7 +13,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14 # Use specific macOS version instead of macos-latest for stability
+    runs-on: macos-latest # Use specific macOS version instead of macos-latest for stability
 
     steps:
       - name: Checkout code
@@ -29,10 +29,36 @@ jobs:
       - name: Build binary
         run: make all # Run make all to build your binary
 
-      - name: Upload binary to release
+      # Package binary for Homebrew
+      - name: Package for Homebrew
+        run: tar -czf airdrop_darwin_arm64.tar.gz airdrop
+
+      # Calculate SHA256 for tar.gz
+      - name: Get SHA256
+        id: sha
+        run: |
+          SHA256=$(shasum -a 256 airdrop_darwin_arm64.tar.gz | cut -d " " -f 1)
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+
+      - name: Upload binary and package to release
         uses: softprops/action-gh-release@v1
         with:
-          files: airdrop
+          files: |
+            airdrop_darwin_arm64.tar.gz
+            airdrop
           tag_name: ${{ github.event.inputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      # Update Homebrew formula in homebrew-tap repo
+      - name: Update Homebrew formula
+        run: |
+          git clone https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/xvoland/homebrew-tap.git
+          cd homebrew-tap
+          sed -i '' "s|url \".*\"|url \"https://github.com/xvoland/airdrop/releases/download/${{ github.event.inputs.tag }}/airdrop_darwin_arm64.tar.gz\"|" Formula/airdrop.rb
+          sed -i '' "s|sha256 \".*\"|sha256 \"${{ steps.sha.outputs.sha256 }}\"|" Formula/airdrop.rb
+          sed -i '' "s|version \".*\"|version \"${{ github.event.inputs.tag }}\"|" Formula/airdrop.rb
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git commit -am "Update airdrop formula to ${{ github.event.inputs.tag }}"
+          git push
