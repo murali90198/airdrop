@@ -1,29 +1,24 @@
 SWIFT_SRC=AirDropBridge.swift
 HEADER=airdrop.h
 DYLIB=libairdrop.dylib
+BIN=airdrop
 
-# Default target
-all: $(DYLIB)
+all: $(DYLIB) $(BIN)
 
-# Build Swift dynamic library
 $(DYLIB): $(SWIFT_SRC)
-    swiftc -emit-library -o $(DYLIB) -import-objc-header $(HEADER) $(SWIFT_SRC) -framework Cocoa -framework Foundation
+	swiftc -emit-library -o $(DYLIB) -import-objc-header $(HEADER) $(SWIFT_SRC) -framework Cocoa -framework Foundation
 
-# Run the Go application
+$(BIN): main.go $(DYLIB)
+	go build -o $(BIN) main.go
+
 run: $(DYLIB)
 	DYLD_LIBRARY_PATH=. go run main.go
 
-# Clean up built files
 clean:
-	rm -f $(DYLIB) $(HEADER)
-
-
-build: $(DYLIB)
-	# swiftc -emit-library -o $(DYLIB) -import-objc-header $(HEADER) $(SWIFT_SRC) -framework Cocoa -framework Foundation
-	go build -o airdrop main.go
+	rm -f $(DYLIB) $(BIN)
 
 sign:
-	codesign --force --sign - libairdrop.dylib
-	codesign --force --sign - airdrop
+	codesign --force --sign - $(DYLIB)
+	codesign --force --sign - $(BIN)
 
-.PHONY: all run clean
+.PHONY: all run clean sign
