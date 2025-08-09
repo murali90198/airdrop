@@ -1,29 +1,29 @@
 SWIFT_SRC=AirDropBridge.swift
 HEADER=airdrop.h
-DYLIB=libairdrop.dylib
-OLIB=AirDropBridge.o
+OBJ=AirDropBridge.o
+STATIC_LIB=libairdrop.a
 BIN=airdrop
 
-all: $(DYLIB) $(BIN)
+all: $(BIN)
 
-$(DYLIB): $(SWIFT_SRC)
+$(OBJ): $(SWIFT_SRC)
+	swiftc -c -import-objc-header $(HEADER) $(SWIFT_SRC) -o $(OBJ)
 	# swiftc -emit-library -o $(DYLIB) -import-objc-header $(HEADER) $(SWIFT_SRC) -framework Cocoa -framework Foundation
-	swiftc -c -parse-as-library $(SWIFT_SRC) -o $(OLIB)
+
+$(STATIC_LIB): $(OBJ)
+	ar rcs $(STATIC_LIB) $(OBJ)
 	# nm AirDropBridge.o | grep main
-	ar rcs libairdrop.a $(OLIB)
 
-$(BIN): main.go $(DYLIB)
+$(BIN): main.go $(STATIC_LIB)
 	go build -o $(BIN) main.go
-
-
-run: $(DYLIB)
-	DYLD_LIBRARY_PATH=. go run main.go
+	rm -f $(OBJ) $(STATIC_LIB)
 
 clean:
-	rm -f $(DYLIB) $(BIN)
+	rm -f $(OBJ) $(STATIC_LIB) $(BIN)
 
 sign:
-	codesign --force --sign - $(DYLIB)
+	codesign --force --sign - $(STATIC_LIB)
 	codesign --force --sign - $(BIN)
 
-.PHONY: all run clean sign
+
+.PHONY: all clean
