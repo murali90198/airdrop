@@ -81,7 +81,7 @@ func main() {
 		bold := "\033[1m"
 
 		fmt.Fprintf(os.Stderr, "%s\n\n", colorize("Copyright © 2025, Vitalii Tereshchuk | DOTOCA.NET All rights reserved | https://dotoca.net/airdrop", cyan))
-		fmt.Fprintf(os.Stderr, "%s%s%s\n\n", bold, colorize("airdrop — version 0.1.2", yellow), "\033[0m")
+		fmt.Fprintf(os.Stderr, "%s%s%s\n\n", bold, colorize("CLI Utility for Apple AirDrop — version 0.1.2", yellow), "\033[0m")
 		fmt.Fprintf(os.Stderr, "%s\n", colorize("Usage:", bold))
 		fmt.Fprintf(os.Stderr, "  %s [options] file1 file2 ...\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  cat file.pdf | %s [options]\n\n", os.Args[0])
