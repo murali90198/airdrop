@@ -3,36 +3,95 @@ name: Build and Release
 on:
   push:
     tags:
-      - "v*" # Trigger on tag pushes matching v*
-  workflow_dispatch: # Enable manual trigger via GitHub UI
+      - "v*"
+  workflow_dispatch:
     inputs:
       tag:
-        description: "Hand Action Release"
+        description: "Release tag"
         required: true
-        default: "v777"
+        default: "v1.0.0"
 
 jobs:
-  build:
-    runs-on: macos-14 # Use specific macOS version instead of macos-latest for stability
+  build-arm64:
+    runs-on: macos-14 # Apple Silicon runner
+    outputs:
+      binary-path: ${{ steps.build.outputs.binary-path }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 # Checkout the repository code
+        uses: actions/checkout@v4
         with:
-          # Checkout the tag provided via input, fallback to default branch if not specified
-          ref: ${{ github.event.inputs.tag || 'main' }}
-      - name: Set up Go
-        uses: actions/setup-go@v5 # Set up Go environment
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Set up Go for arm64
+        uses: actions/setup-go@v5
         with:
           go-version: "1.22"
 
-      - name: Build binary
-        run: make all # Run make all to build your binary
+      - name: Build for arm64
+        run: |
+          make clean
+          make all ARCH=arm64
+        id: build
 
-      - name: Upload binary to release
+      - name: Upload arm64 binary as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: airdrop-arm64
+          path: airdrop
+
+  build-x86_64:
+    runs-on: macos-12 # Intel runner
+    needs: build-arm64
+    outputs:
+      binary-path: ${{ steps.build.outputs.binary-path }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Set up Go for x86_64
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Build for x86_64
+        run: |
+          make clean
+          make all ARCH=x86_64
+        id: build
+
+      - name: Upload x86_64 binary as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: airdrop-x86_64
+          path: airdrop
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [build-arm64, build-x86_64]
+
+    steps:
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v3
+        with:
+          name: airdrop-arm64
+          path: ./arm64
+
+      - name: Download x86_64 binary
+        uses: actions/download-artifact@v3
+        with:
+          name: airdrop-x86_64
+          path: ./x86_64
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: airdrop
+          files: |
+            ./arm64/airdrop
+            ./x86_64/airdrop
           tag_name: ${{ github.event.inputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
