@@ -83,3 +83,5 @@ jobs:
           git config user.email "github-actions@github.com"
           git commit -am "Update airdrop formula to ${TAG}"
           git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
