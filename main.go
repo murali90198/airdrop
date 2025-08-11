@@ -67,7 +67,7 @@ func detectExtFromBytes(sample []byte) string {
 }
 
 func main() {
-	// Ensure Go main goroutine stays bound to the current OS thread
+	// Ensure Go main goroutine stays bound to the current macOS thread
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
