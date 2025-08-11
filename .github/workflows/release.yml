@@ -1,3 +1,5 @@
+Вот я исправил, проверь все ли я добавил и все ли правильно:
+
 name: Build and Release
 
 on:
@@ -43,7 +45,7 @@ jobs:
       # Update Homebrew formula in homebrew-tap repo
       - name: Update Homebrew formula
         run: |
-          VERSION="${{ github.ref_name || github.event.inputs.tag }}"
+          VERSION="${{ github.event.inputs.tag || github.ref_name }}"
           # strip leading 'v' from version for formula
           VERSION_STRIPPED=${VERSION#v}
 
