@@ -16,7 +16,7 @@ jobs:
     runs-on: macos-14
 
     steps:
-      - name: Checkout code
+      - name: Checkout code (main branch first)
         uses: actions/checkout@v4
         with:
           ref: main
@@ -35,10 +35,10 @@ jobs:
           git tag ${{ github.event.inputs.tag }}
           git push https://x-access-token:${PAT}@github.com/${{ github.repository }}.git ${{ github.event.inputs.tag }}
 
-      - name: Checkout tag code
+      - name: Checkout code at tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+          ref: ${{ github.event_name == 'workflow_dispatch' ? github.event.inputs.tag : github.ref_name }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -51,32 +51,32 @@ jobs:
       - name: Package for Homebrew
         run: tar -czf airdrop_darwin_arm64.tar.gz airdrop
 
-      - name: Upload release package
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-          files: |
-            airdrop_darwin_arm64.tar.gz
-            airdrop
-        env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-
       - name: Get SHA256 checksum
         id: sha
         run: |
           SHA256=$(shasum -a 256 airdrop_darwin_arm64.tar.gz | cut -d " " -f 1)
           echo "sha256=$SHA256" >> $GITHUB_OUTPUT
 
+      - name: Upload release package
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' ? github.event.inputs.tag : github.ref_name }}
+          files: |
+            airdrop_darwin_arm64.tar.gz
+            airdrop
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
       - name: Update Homebrew formula
         env:
           PAT: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
-          TAG=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+          TAG=${{ github.event_name == 'workflow_dispatch' ? github.event.inputs.tag : github.ref_name }}
           git clone https://x-access-token:${PAT}@github.com/xvoland/homebrew-tap.git
           cd homebrew-tap
-          sed -i '' "s|url \".*\"|url \"https://github.com/xvoland/airdrop/releases/download/${TAG}/airdrop_darwin_arm64.tar.gz\"|" Formula/airdrop.rb
-          sed -i '' "s|sha256 \".*\"|sha256 \"${{ steps.sha.outputs.sha256 }}\"|" Formula/airdrop.rb
+          sed -i '' -e "s|url \".*\"|url \"https://github.com/xvoland/airdrop/releases/download/${TAG}/airdrop_darwin_arm64.tar.gz\"|" Formula/airdrop.rb
+          sed -i '' -e "s|sha256 \".*\"|sha256 \"${{ steps.sha.outputs.sha256 }}\"|" Formula/airdrop.rb
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git commit -am "Update airdrop formula to ${TAG}"
-          git push https://x-access-token:${PAT}@github.com/xvoland/homebrew-tap.git
+          git push --quiet https://x-access-token:${PAT}@github.com/xvoland/homebrew-tap.git
