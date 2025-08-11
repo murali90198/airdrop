@@ -3,11 +3,11 @@ name: Build and Release
 on:
   push:
     tags:
-      - "v*" # Trigger when pushing a tag starting with "v"
+      - "v*" # Trigger workflow on push of tags starting with 'v'
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag for manual release (e.g. v0.2.5)"
+        description: "Release tag"
         required: true
         default: "v0.2.5"
 
@@ -16,60 +16,77 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      # Checkout the repository at the specified tag (manual) or current tag (push)
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref }}
-          fetch-depth: 0 # Full history so tags are available
+          # Checkout the tag provided via input or current ref
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
-      # Set up Go environment
-      - name: Set up Go
+      - name: Set up Go environment
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
 
-      # Build the binary using Makefile
-      - name: Build binary
+      - name: Build the executable binary
         run: make all
 
-      # Package the binary into a tar.gz file for Homebrew
-      - name: Package for Homebrew
+      - name: Package the binary into a tar.gz archive for Homebrew
         run: tar -czf airdrop_darwin_arm64.tar.gz airdrop
 
-      # Calculate SHA256 checksum for the tar.gz file
-      - name: Get SHA256
+      - name: Calculate SHA256 checksum of the archive
         id: sha
         run: |
           SHA256=$(shasum -a 256 airdrop_darwin_arm64.tar.gz | cut -d " " -f 1)
           echo "sha256=$SHA256" >> $GITHUB_OUTPUT
 
-      # Determine version based on whether workflow is manual or tag-triggered
-      - name: Set version variables
+      - name: Set version variable for reuse
         id: vars
         run: |
-          VERSION="${{ github.event.inputs.tag || github.ref_name }}"
-          VERSION_STRIPPED=${VERSION#v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "version_stripped=$VERSION_STRIPPED" >> $GITHUB_OUTPUT
+          VERSION=${{ github.event.inputs.tag || github.ref_name }}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
-      # Update the Homebrew formula with the new version, URL, and checksum
-      - name: Update Homebrew formula
+      - name: Update Homebrew formula in homebrew-tap repository
         run: |
-          VERSION="${{ steps.vars.outputs.version }}"
-          VERSION_STRIPPED="${{ steps.vars.outputs.version_stripped }}"
+          VERSION=${{ steps.vars.outputs.version }}
+          VERSION_STRIPPED=${VERSION#v}  # Remove leading 'v' for formula version
 
-          # Clone the Homebrew tap repository
           git clone https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/xvoland/homebrew-tap.git
           cd homebrew-tap
 
-          # Update the formula fields
+          # Update URL, SHA256 and version in the formula file
           sed -i '' "s|url \".*\"|url \"https://github.com/xvoland/airdrop/releases/download/${VERSION}/airdrop_darwin_arm64.tar.gz\"|" Formula/airdrop.rb
           sed -i '' "s|sha256 \".*\"|sha256 \"${{ steps.sha.outputs.sha256 }}\"|" Formula/airdrop.rb
           sed -i '' "s|version \".*\"|version \"${VERSION_STRIPPED}\"|" Formula/airdrop.rb
 
-          # Commit and push changes
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git commit -am "Update airdrop formula to ${VERSION}"
           git push
+
+      - name: Create GitHub Release for the tag
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ steps.vars.outputs.version }}
+          release_name: Release ${{ steps.vars.outputs.version }}
+          body: "Automated release for version ${{ steps.vars.outputs.version }}"
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload the airdrop executable to the GitHub Release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./airdrop
+          asset_name: airdrop
+          asset_content_type: application/octet-stream
+
+      - name: Upload the tar.gz archive to the GitHub Release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./airdrop_darwin_arm64.tar.gz
+          asset_name: airdrop_darwin_arm64.tar.gz
+          asset_content_type: application/gzip
