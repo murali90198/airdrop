@@ -13,59 +13,73 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest # Use macOS runner
+    runs-on: macos-14 # Use specific macOS version instead of macos-latest for stability
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 # Checkout repo code
+        uses: actions/checkout@v4 # Checkout the repository code
         with:
-          # Checkout the tag provided via input or current ref, fallback to main
-          ref: ${{ github.ref_name || github.event.inputs.tag || 'main' }}
+          ref: main # Always checkout main branch first
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          # If manual run → use provided tag, else extract tag from push event
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+            # Create and push a new tag to GitHub
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git tag ${{ github.event.inputs.tag }}
+            git push origin ${{ github.event.inputs.tag }}
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout code at release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
 
       - name: Set up Go
-        uses: actions/setup-go@v5 # Setup Go environment
+        uses: actions/setup-go@v5 # Set up Go environment
         with:
           go-version: "1.22"
 
       - name: Build binary
-        run: make all # Build your binary
+        run: make all # Run make all to build your binary
 
       - name: Package for Homebrew
-        run: tar -czf airdrop_darwin_arm64.tar.gz airdrop # Package binary
+        run: |
+          tar -czf airdrop_darwin_arm64.tar.gz airdrop
 
-      - name: Get SHA256
+      - name: Upload release package
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: |
+            airdrop_darwin_arm64.tar.gz
+            airdrop
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      - name: Get release asset SHA256
         id: sha
         run: |
-          SHA256=$(shasum -a 256 airdrop_darwin_arm64.tar.gz | cut -d " " -f 1)
+          FILE=airdrop_darwin_arm64.tar.gz
+          SHA256=$(shasum -a 256 $FILE | cut -d " " -f 1)
           echo "sha256=$SHA256" >> $GITHUB_OUTPUT
 
       - name: Update Homebrew formula
         run: |
-          VERSION="${{ github.event.inputs.tag || github.ref_name }}"
-          VERSION_STRIPPED=${VERSION#v}
-
+          TAG=${{ steps.tag.outputs.tag }}
           git clone https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/xvoland/homebrew-tap.git
           cd homebrew-tap
-
-          sed -i '' "s|url \".*\"|url \"https://github.com/xvoland/airdrop/releases/download/${VERSION}/airdrop_darwin_arm64.tar.gz\"|" Formula/airdrop.rb
+          # Update URL with current tag
+          sed -i '' "s|url \".*\"|url \"https://github.com/xvoland/airdrop/releases/download/${TAG}/airdrop_darwin_arm64.tar.gz\"|" Formula/airdrop.rb
+          # Update sha256 checksum
           sed -i '' "s|sha256 \".*\"|sha256 \"${{ steps.sha.outputs.sha256 }}\"|" Formula/airdrop.rb
-          sed -i '' "s|version \".*\"|version \"${VERSION_STRIPPED}\"|" Formula/airdrop.rb
-
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git commit -am "Update airdrop formula to ${VERSION}"
+          git commit -am "Update airdrop formula to ${TAG}"
           git push
-
-      - name: Install GitHub CLI
-        run: brew install gh # Install GitHub CLI
-
-      - name: Create GitHub Release and Upload Assets
-        env:
-          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }} # Use personal access token
-        run: |
-          TAG=${{ github.event.inputs.tag || github.ref_name }}
-
-          # Create release and upload files in one command
-          gh release create "$TAG" ./airdrop ./airdrop_darwin_arm64.tar.gz \
-            --title "Release $TAG" \
-            --notes "Automated release for version $TAG"
