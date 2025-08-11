@@ -16,11 +16,12 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      # Checkout the repository code (either a given tag or the default branch)
+      # Checkout the repository at the specified tag (manual) or current tag (push)
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.ref_name || 'main' }}
+          ref: ${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref }}
+          fetch-depth: 0 # Full history so tags are available
 
       # Set up Go environment
       - name: Set up Go
