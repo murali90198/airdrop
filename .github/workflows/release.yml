@@ -3,57 +3,71 @@ name: Build and Release
 on:
   push:
     tags:
-      - "v*" # Trigger on tag pushes matching v*
-  workflow_dispatch: # Enable manual trigger via GitHub UI
+      - "v*" # Trigger when pushing a tag starting with "v"
+  workflow_dispatch:
     inputs:
       tag:
-        description: "Hand Action Release"
+        description: "Tag for manual release (e.g. v0.2.5)"
         required: true
         default: "v0.2.5"
 
 jobs:
   build:
-    runs-on: macos-latest # Use specific macOS version instead of macos-latest for stability
+    runs-on: macos-latest
 
     steps:
+      # Checkout the repository code (either a given tag or the default branch)
       - name: Checkout code
-        uses: actions/checkout@v4 # Checkout the repository code
+        uses: actions/checkout@v4
         with:
-          # Checkout the tag provided via input, fallback to default branch if not specified
-          ref: ${{ github.event.inputs.tag || 'main' }}
+          ref: ${{ github.event.inputs.tag || github.ref_name || 'main' }}
+
+      # Set up Go environment
       - name: Set up Go
-        uses: actions/setup-go@v5 # Set up Go environment
+        uses: actions/setup-go@v5
         with:
           go-version: "1.22"
 
+      # Build the binary using Makefile
       - name: Build binary
-        run: make all # Run make all to build your binary
+        run: make all
 
-      # Package binary for Homebrew
+      # Package the binary into a tar.gz file for Homebrew
       - name: Package for Homebrew
         run: tar -czf airdrop_darwin_arm64.tar.gz airdrop
 
-      # Calculate SHA256 for tar.gz
+      # Calculate SHA256 checksum for the tar.gz file
       - name: Get SHA256
         id: sha
         run: |
           SHA256=$(shasum -a 256 airdrop_darwin_arm64.tar.gz | cut -d " " -f 1)
           echo "sha256=$SHA256" >> $GITHUB_OUTPUT
 
-      # Update Homebrew formula in homebrew-tap repo
-      - name: Update Homebrew formula
+      # Determine version based on whether workflow is manual or tag-triggered
+      - name: Set version variables
+        id: vars
         run: |
           VERSION="${{ github.event.inputs.tag || github.ref_name }}"
-          # strip leading 'v' from version for formula
           VERSION_STRIPPED=${VERSION#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version_stripped=$VERSION_STRIPPED" >> $GITHUB_OUTPUT
 
+      # Update the Homebrew formula with the new version, URL, and checksum
+      - name: Update Homebrew formula
+        run: |
+          VERSION="${{ steps.vars.outputs.version }}"
+          VERSION_STRIPPED="${{ steps.vars.outputs.version_stripped }}"
+
+          # Clone the Homebrew tap repository
           git clone https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/xvoland/homebrew-tap.git
           cd homebrew-tap
 
+          # Update the formula fields
           sed -i '' "s|url \".*\"|url \"https://github.com/xvoland/airdrop/releases/download/${VERSION}/airdrop_darwin_arm64.tar.gz\"|" Formula/airdrop.rb
           sed -i '' "s|sha256 \".*\"|sha256 \"${{ steps.sha.outputs.sha256 }}\"|" Formula/airdrop.rb
           sed -i '' "s|version \".*\"|version \"${VERSION_STRIPPED}\"|" Formula/airdrop.rb
 
+          # Commit and push changes
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git commit -am "Update airdrop formula to ${VERSION}"
